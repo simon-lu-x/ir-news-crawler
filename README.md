@@ -2,7 +2,16 @@
 
 Collects press releases from the investor relations sites of US listed companies and stores them in SQLite.
 
-Status: stage 5. Two companies (AMD, Intel) on two page templates, listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental. Every run is checked for silent failures.
+[![test](https://github.com/simon-lu-x/ir-news-crawler/actions/workflows/test.yml/badge.svg)](https://github.com/simon-lu-x/ir-news-crawler/actions/workflows/test.yml)
+
+Status: stage 6. Two companies (AMD, Intel) on two page templates, listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental. Every run is checked for silent failures.
+
+What building it turned up (details in [Findings so far](#findings-so-far)):
+
+- Scrapy parses `Crawl-delay` but never enforces it, and AutoThrottle can lower the delay below it.
+- On a 429, delaying the retry is not enough. Requests already queued for that host still go out, so the whole host has to pause.
+- A broken crawler still ends with `finish_reason: finished`. A `<p>`-only parser silently dropped about 70% of an earnings release, so every run is now checked for silent failures.
+- robots.txt allowing a path does not mean you get in. 19 of 35 IR sites checked were behind bot protection.
 
 ## Run
 
