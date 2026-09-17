@@ -1,5 +1,7 @@
 # ir-news-crawler
 
+**English** | [中文](README.zh-CN.md)
+
 Collects press releases from the investor relations sites of US listed companies and stores them in SQLite.
 
 [![test](https://github.com/simon-lu-x/ir-news-crawler/actions/workflows/test.yml/badge.svg)](https://github.com/simon-lu-x/ir-news-crawler/actions/workflows/test.yml)
@@ -78,7 +80,7 @@ Tests run the real crawler in a subprocess against a small local site (`tests/fi
 | URL frontier | Scheduler | built in |
 | Fetcher | Downloader | built in |
 | Politeness | download slots per hostname, AutoThrottle | `settings.py` |
-| Crawl-delay | not supported, added here | `CrawlDelayAutoThrottle` in `extensions.py` |
+| Crawl-delay | parsed but not enforced, added here | `CrawlDelayAutoThrottle` in `extensions.py` |
 | Retry with backoff | `RetryMiddleware` retries at once, added here | `RateLimitBackoffMiddleware` in `middlewares.py` |
 | robots.txt handler | `RobotsTxtMiddleware` | `ROBOTSTXT_OBEY` |
 | Parser and link extractor | Spider callbacks | `parse_listing`, `parse_detail` |
