@@ -24,6 +24,42 @@ sqlite3 data/irnews.db "select source_id, published_at, title from press_release
 sqlite3 data/irnews.db "select run_at, ticker, status, failed_checks from crawl_runs"
 ```
 
+## Sample output
+
+From a local run on 2026-09-17. The database is not in the repo (`data/` is ignored), so this is a copy.
+
+`press_releases`: 44 rows (AMD 20, INTC 24). The newest five:
+
+```
+ticker  source_id  published   title
+------  ---------  ----------  ------------------------------------------------------------------
+INTC    1781       2026-09-08  Intel Foundry and ASML Collaborate to Accelerate Industry Readiness for High NA EUV
+AMD     1298       2026-08-31  AMD, Cisco and HUMAIN Expand Saudi Arabia's AI Infrastructure as AMD Instinct Systems Go Live
+AMD     1297       2026-08-19  AMD Appoints Tim Ryan to Board of Directors
+INTC    1780       2026-08-18  Intel Corporation to Participate in Upcoming Investor Conference
+INTC    1779       2026-08-11  Intel Announces Upsize and Pricing of $20 Billion Common Stock Offering
+```
+
+Part of the stored body of "AMD Reports Second Quarter 2026 Financial Results". Table rows are kept, one line per row. The `<p>`-only parser lost all of these:
+
+```
+ | Q2'26 | Q2'25 (1) | Y/Y ( 1) | Q1'26 | Q/Q
+Revenue ($M) | $11,536 | $7,685 | Up 50% | $10,253 | Up 13%
+Gross profit ($M) | $6,203 | $3,059 | Up 103% | $5,416 | Up 15%
+Net income ($M) | $2,297 | $872 | Up 163% | $1,383 | Up 66%
+```
+
+`crawl_runs`: the health check result per ticker. The first run fetched releases that were already stored, so rows were updated, not inserted. The second run was incremental: page 1 had no new ids, so it stopped there and fetched no detail pages.
+
+```
+run_at                     ticker  pages  links  details_ok  inserted  status
+-------------------------  ------  -----  -----  ----------  --------  ------
+2026-09-17T05:40:17+00:00  AMD     2      20     20          0         ok
+2026-09-17T05:40:17+00:00  INTC    2      24     24          0         ok
+2026-09-17T05:43:34+00:00  AMD     1      10     0           0         ok
+2026-09-17T05:43:34+00:00  INTC    1      12     0           0         ok
+```
+
 ## Test
 
 ```
