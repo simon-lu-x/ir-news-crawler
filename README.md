@@ -2,13 +2,14 @@
 
 Collects press releases from the investor relations sites of US listed companies and stores them in SQLite.
 
-Status: stage 4. One company (AMD), listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental.
+Status: stage 5. Two companies (AMD, Intel) on two page templates, listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental.
 
 ## Run
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/scrapy crawl press_detail -a max_pages=1
+.venv/bin/scrapy crawl press_detail -a tickers=INTC -a max_pages=1
 .venv/bin/scrapy crawl press_detail -a max_pages=1 -a full=1   # ignore what is stored
 sqlite3 data/irnews.db "select source_id, published_at, title from press_releases"
 ```
@@ -27,6 +28,7 @@ Tests run the real crawler in a subprocess against a small local site (`tests/fi
 | Textbook name | Scrapy name | Where |
 |---|---|---|
 | Seeds | `start()` | `SITES` in `spiders/press_detail.py` |
+| Per-template selectors | | `LAYOUTS` in `spiders/press_detail.py` |
 | URL frontier | Scheduler | built in |
 | Fetcher | Downloader | built in |
 | Politeness | download slots per hostname, AutoThrottle | `settings.py` |
@@ -70,6 +72,10 @@ Against a local site that returns one 429 with `Retry-After: 3`, then serves 4 p
 | Stock RetryMiddleware, run 2 | 0.17, 0.40, 0.68, 0.96 | 4 of 4 |
 | `RateLimitBackoffMiddleware`, run 1 | 3.30, 3.59, 3.86, 4.14 | 0 of 4 |
 | `RateLimitBackoffMiddleware`, run 2 | 3.17, 3.43, 3.70, 3.92 | 0 of 4 |
+
+**Same platform does not mean same template.** AMD and Intel use the same IR platform, with the same URL scheme and the same asset CDN. The first try ran AMD's listing selector on Intel and found zero links. Intel's theme uses different listing markup, links each release three times (image, title, button), and adds a related documents box and a "Released" line to the article. So the parser is split by template, not by company: the crawl logic is shared, and each template is a few selectors in `LAYOUTS`. After the change, AMD's 20 stored rows re-parsed to identical content hashes, so `PARSER_VERSION` did not need a bump.
+
+Two things a test should not trust here. Wrong selectors do not raise: the crawl finishes normally with zero items, and the only sign is the `listing/empty` stat. And Scrapy's dupefilter hides a listing selector that takes all three links per release, because each URL is still fetched once. The layout test checks `dupefilter/filtered` for that reason. Without that check, the test passed with the wrong selector.
 
 **Incremental crawling needs a parser version.** A rerun skips releases whose site id is already stored, and stops paging at the first listing page with no new ids. Two runs on AMD: the first made 23 requests, the second made 2 (robots.txt and page 1).
 
