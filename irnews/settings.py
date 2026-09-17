@@ -16,6 +16,12 @@ AUTOTHROTTLE_ENABLED = True
 AUTOTHROTTLE_START_DELAY = 2
 AUTOTHROTTLE_MAX_DELAY = 30
 AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
+# Scrapy parses Crawl-delay but ignores it. This replaces AutoThrottle with a
+# version that treats each host's Crawl-delay as a floor. See irnews/extensions.py.
+EXTENSIONS = {
+    "scrapy.extensions.throttle.AutoThrottle": None,
+    "irnews.extensions.CrawlDelayAutoThrottle": 0,
+}
 
 # Retries. The built-in middleware retries these codes right away, with no backoff.
 RETRY_ENABLED = True
