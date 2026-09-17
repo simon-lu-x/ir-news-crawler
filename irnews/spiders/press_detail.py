@@ -95,12 +95,17 @@ class PressDetailSpider(scrapy.Spider):
     def parse_listing(self, response, ticker, page):
         links = response.css(self.layout(ticker).listing_links).getall()
         if not links:
-            # A listing page with no items means the layout changed or we got blocked.
-            # Count it so the run summary shows it, instead of silently getting nothing.
-            self.crawler.stats.inc_value(f"listing/empty/{ticker}")
+            if page == 1:
+                # Page 1 of a news listing always has items. None means the selector
+                # stopped matching. Count it, since nothing else will fail.
+                self.crawler.stats.inc_value(f"listing/empty/{ticker}")
+            else:
+                # An empty later page is just the end of the listing.
+                self.crawler.stats.set_value(f"listing/end_at_page/{ticker}", page)
             return
 
         self.crawler.stats.inc_value(f"listing/pages/{ticker}")
+        self.crawler.stats.inc_value(f"listing/links/{ticker}", len(links))
         known = self.known.get(ticker, set())
         new_count = 0
         for href in links:
@@ -137,6 +142,16 @@ class PressDetailSpider(scrapy.Spider):
         # different query strings or slugs, and the canonical one is the stable key.
         url = response.css("link[rel=canonical]::attr(href)").get() or response.url
         match = DETAIL_ID.search(url)
+        skip_blocks = self.layout(ticker).skip_blocks
+        body_text = extract_body(article, skip_blocks)
+
+        coverage = text_coverage(body_text, article, skip_blocks)
+        if coverage is not None:
+            stats = self.crawler.stats
+            stats.min_value(f"quality/min_coverage/{ticker}", round(coverage, 3))
+            if coverage < self.settings.getfloat("HEALTH_MIN_COVERAGE"):
+                stats.inc_value(f"quality/low_coverage/{ticker}")
+                self.logger.warning("Low body coverage %.0f%%: %s", coverage * 100, url)
 
         yield PressRelease(
             ticker=ticker,
@@ -144,7 +159,7 @@ class PressDetailSpider(scrapy.Spider):
             url=url,
             title=(article.css("h1.article-heading::text").get() or "").strip(),
             published_at=article.css("time.date::attr(datetime)").get(),
-            body_text=extract_body(article, self.layout(ticker).skip_blocks),
+            body_text=body_text,
             fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             parser_version=PARSER_VERSION,
         )
@@ -152,6 +167,29 @@ class PressDetailSpider(scrapy.Spider):
 
 def clean(texts):
     return " ".join(" ".join(texts).split())
+
+
+def text_coverage(body_text, article, skip_blocks):
+    """Share of the article's words that made it into body_text, or None if empty.
+
+    This is the check that would have caught the <p>-only parser: it kept about
+    30% of an earnings release. Word counts do not depend on how long a release
+    is, so one short announcement does not look like a failure.
+
+    The denominator is counted here, separately from extract_body, on purpose.
+    If both used the same node selection, a selection bug would shrink both
+    sides equally and the ratio would still look fine.
+    """
+    words = 0
+    for node in article.xpath("./*"):
+        classes = set((node.attrib.get("class") or "").split())
+        if node.root.tag == "h1" or classes & skip_blocks:
+            continue
+        words += len(clean(node.xpath(".//text()[not(ancestor::script) and not(ancestor::style)]").getall()).split())
+    if words == 0:
+        return None
+    kept = sum(1 for word in body_text.split() if word != "|")
+    return kept / words
 
 
 def extract_body(article, skip_blocks):

@@ -17,6 +17,21 @@ CREATE TABLE IF NOT EXISTS press_releases (
 );
 CREATE INDEX IF NOT EXISTS idx_content_hash ON press_releases(content_hash);
 CREATE INDEX IF NOT EXISTS idx_ticker_source_id ON press_releases(ticker, source_id);
+
+-- One row per ticker per crawl, written by HealthCheck.
+CREATE TABLE IF NOT EXISTS crawl_runs (
+    run_at          TEXT NOT NULL,
+    ticker          TEXT NOT NULL,
+    listing_pages   INTEGER NOT NULL,
+    listing_links   INTEGER NOT NULL,
+    details_ok      INTEGER NOT NULL,
+    details_dropped INTEGER NOT NULL,
+    low_coverage    INTEGER NOT NULL,
+    inserted        INTEGER NOT NULL,
+    status          TEXT NOT NULL,
+    failed_checks   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_ticker ON crawl_runs(ticker, run_at);
 """
 
 

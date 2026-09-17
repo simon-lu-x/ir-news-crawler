@@ -21,7 +21,13 @@ AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
 EXTENSIONS = {
     "scrapy.extensions.throttle.AutoThrottle": None,
     "irnews.extensions.CrawlDelayAutoThrottle": 0,
+    "irnews.health.HealthCheck": 500,
 }
+
+# Silent failure checks run at the end of every crawl. See irnews/health.py.
+HEALTH_MIN_COVERAGE = 0.8  # a body must keep 80% of its article's words
+HEALTH_MAX_DROP_RATE = 0.2  # at most 20% of detail pages may fail validation
+HEALTH_MIN_LINKS_RATIO = 0.5  # links per listing page may not halve since the last run
 
 # Retries. The built-in middleware retries these codes right away, with no backoff.
 RETRY_ENABLED = True

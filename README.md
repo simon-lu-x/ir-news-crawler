@@ -2,7 +2,7 @@
 
 Collects press releases from the investor relations sites of US listed companies and stores them in SQLite.
 
-Status: stage 5. Two companies (AMD, Intel) on two page templates, listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental.
+Status: stage 5. Two companies (AMD, Intel) on two page templates, listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental. Every run is checked for silent failures.
 
 ## Run
 
@@ -12,6 +12,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/scrapy crawl press_detail -a tickers=INTC -a max_pages=1
 .venv/bin/scrapy crawl press_detail -a max_pages=1 -a full=1   # ignore what is stored
 sqlite3 data/irnews.db "select source_id, published_at, title from press_releases"
+sqlite3 data/irnews.db "select run_at, ticker, status, failed_checks from crawl_runs"
 ```
 
 ## Test
@@ -39,6 +40,7 @@ Tests run the real crawler in a subprocess against a small local site (`tests/fi
 | URL canonicalizer | | `link[rel=canonical]` in `parse_detail` |
 | Duplicate URL eliminator, within a run | request fingerprint dupefilter | built in |
 | Duplicate URL eliminator, across runs | | `known_source_ids` in `store.py`, checked in `parse_listing` |
+| Monitoring | stats collector | `HealthCheck` in `health.py`, results in `crawl_runs` |
 | Recrawl policy | | stop paging at the first page with no new ids; `PARSER_VERSION` |
 | Content-seen test | Item Pipeline | `ContentDedupPipeline` |
 | Validation | Item Pipeline | `ValidatePipeline` |
@@ -73,6 +75,28 @@ Against a local site that returns one 429 with `Retry-After: 3`, then serves 4 p
 | `RateLimitBackoffMiddleware`, run 1 | 3.30, 3.59, 3.86, 4.14 | 0 of 4 |
 | `RateLimitBackoffMiddleware`, run 2 | 3.17, 3.43, 3.70, 3.92 | 0 of 4 |
 
+**A crawler that is broken still finishes normally.** Blocked listings, selectors that stop matching, and extraction that drops text all end with `finish_reason: finished`. And with incremental crawls, zero new items is also what a healthy run looks like. So `HealthCheck` never counts items. After each run it checks every ticker for:
+
+| Check | Catches | Rule |
+|---|---|---|
+| `listing_not_reached` | 403, 404, robots.txt | no listing page parsed |
+| `listing_empty` | listing selector stopped matching | page 1 has no links |
+| `links_per_page_dropped` | partial template change | under half the links per page of the last run |
+| `high_drop_rate` | detail template change | over 20% of detail pages fail validation |
+| `low_coverage` | extraction bug | a body keeps under 80% of its article's words |
+
+`low_coverage` exists because of the table bug below. The word count of the article is computed separately from the extractor on purpose: if both used the same node selection, a selection bug would shrink both sides and the ratio would still look fine. On real pages:
+
+| Page | Current parser | `<p>`-only parser |
+|---|---|---|
+| AMD Q2 2026 earnings | 1.00 | 0.26 |
+| Intel Q2 2026 earnings | 1.00 | 0.27 |
+| AMD board appointment | 1.00 | 0.94 |
+
+All 44 AMD and Intel releases crawled scored 1.00.
+
+The first version of `listing_empty` flagged any empty listing page. Its tests failed: a crawl that pages past the last page gets an empty page, which is just the end of the listing. A full AMD backfill would have hit the same false alarm on page 131. Now only an empty page 1 counts.
+
 **Same platform does not mean same template.** AMD and Intel use the same IR platform, with the same URL scheme and the same asset CDN. The first try ran AMD's listing selector on Intel and found zero links. Intel's theme uses different listing markup, links each release three times (image, title, button), and adds a related documents box and a "Released" line to the article. So the parser is split by template, not by company: the crawl logic is shared, and each template is a few selectors in `LAYOUTS`. After the change, AMD's 20 stored rows re-parsed to identical content hashes, so `PARSER_VERSION` did not need a bump.
 
 Two things a test should not trust here. Wrong selectors do not raise: the crawl finishes normally with zero items, and the only sign is the `listing/empty` stat. And Scrapy's dupefilter hides a listing selector that takes all three links per release, because each URL is still fetched once. The layout test checks `dupefilter/filtered` for that reason. Without that check, the test passed with the wrong selector.
@@ -88,6 +112,9 @@ It does not stop at the first known item, because a pinned or re-dated release c
 * Some financial tables split `$` and the number into separate cells, which leaves empty cells in a row.
 * If a company edits a release after we store it, an incremental crawl does not see the change. `-a full=1` does.
 * The stop rule assumes the listing is newest first.
+* `low_coverage` at 80% misses small losses. The `<p>`-only parser lost 6% of a release with no tables, and that would pass.
+* Health results go to the log and the `crawl_runs` table only. Nothing sends an alert yet, and the process exit code is 0 either way.
+* `links_per_page_dropped` compares with the last run only.
 * Backoff state lives in the download slot, so it only covers one crawler process. Several processes hitting the same host would need shared state, such as Redis.
 * The idle-slot case (a slot dropped and rebuilt) is handled by writing to the downloader's per-slot settings, but it has no test yet. A test would need over a minute of idle time.
 
