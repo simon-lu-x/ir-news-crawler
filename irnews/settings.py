@@ -26,7 +26,17 @@ EXTENSIONS = {
 # Retries. The built-in middleware retries these codes right away, with no backoff.
 RETRY_ENABLED = True
 RETRY_TIMES = 3
+# 429 and 503 are left out here. RateLimitBackoffMiddleware handles them.
+RETRY_HTTP_CODES = [500, 502, 504, 522, 524, 408]
 DOWNLOAD_TIMEOUT = 20
+
+# Backoff for 429 and 503. See irnews/middlewares.py.
+DOWNLOADER_MIDDLEWARES = {
+    "irnews.middlewares.RateLimitBackoffMiddleware": 540,
+}
+BACKOFF_BASE = 5
+BACKOFF_MAX = 300
+BACKOFF_MAX_RETRIES = 5
 
 # Item pipeline. Lower number runs first.
 ITEM_PIPELINES = {
