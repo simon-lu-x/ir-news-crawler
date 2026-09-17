@@ -1,30 +1,8 @@
 import hashlib
-import sqlite3
-from pathlib import Path
 
 from scrapy.exceptions import DropItem
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS press_releases (
-    url           TEXT PRIMARY KEY,
-    ticker        TEXT NOT NULL,
-    source_id     TEXT,
-    title         TEXT NOT NULL,
-    published_at  TEXT NOT NULL,
-    body_text     TEXT NOT NULL,
-    content_hash  TEXT NOT NULL,
-    first_seen_at TEXT NOT NULL,
-    last_seen_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_content_hash ON press_releases(content_hash);
-"""
-
-
-def open_db(path):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.executescript(SCHEMA)
-    return conn
+from irnews.store import open_db
 
 
 class ValidatePipeline:
@@ -125,19 +103,20 @@ class SQLitePipeline:
             """
             INSERT INTO press_releases
                 (url, ticker, source_id, title, published_at, body_text,
-                 content_hash, first_seen_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 content_hash, first_seen_at, last_seen_at, parser_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
-                title        = excluded.title,
-                published_at = excluded.published_at,
-                body_text    = excluded.body_text,
-                content_hash = excluded.content_hash,
-                last_seen_at = excluded.last_seen_at
+                title          = excluded.title,
+                published_at   = excluded.published_at,
+                body_text      = excluded.body_text,
+                content_hash   = excluded.content_hash,
+                last_seen_at   = excluded.last_seen_at,
+                parser_version = excluded.parser_version
             """,
             (
                 item["url"], item["ticker"], item["source_id"], item["title"],
                 item["published_at"], item["body_text"], item["content_hash"],
-                item["fetched_at"], item["fetched_at"],
+                item["fetched_at"], item["fetched_at"], item["parser_version"],
             ),
         )
         self.stats.inc_value(f"store/{'inserted' if is_new else 'updated'}/{item['ticker']}")

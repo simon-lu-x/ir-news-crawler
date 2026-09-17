@@ -2,13 +2,14 @@
 
 Collects press releases from the investor relations sites of US listed companies and stores them in SQLite.
 
-Status: stage 3. One company (AMD), listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host.
+Status: stage 4. One company (AMD), listing pages to storage. Crawl-delay is enforced. 429 and 503 pause the host. Crawls are incremental.
 
 ## Run
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/scrapy crawl press_detail -a max_pages=1
+.venv/bin/scrapy crawl press_detail -a max_pages=1 -a full=1   # ignore what is stored
 sqlite3 data/irnews.db "select source_id, published_at, title from press_releases"
 ```
 
@@ -35,6 +36,8 @@ Tests run the real crawler in a subprocess against a small local site (`tests/fi
 | Parser and link extractor | Spider callbacks | `parse_listing`, `parse_detail` |
 | URL canonicalizer | | `link[rel=canonical]` in `parse_detail` |
 | Duplicate URL eliminator, within a run | request fingerprint dupefilter | built in |
+| Duplicate URL eliminator, across runs | | `known_source_ids` in `store.py`, checked in `parse_listing` |
+| Recrawl policy | | stop paging at the first page with no new ids; `PARSER_VERSION` |
 | Content-seen test | Item Pipeline | `ContentDedupPipeline` |
 | Validation | Item Pipeline | `ValidatePipeline` |
 | Store | Item Pipeline | `SQLitePipeline`, upsert on `url` |
@@ -68,12 +71,17 @@ Against a local site that returns one 429 with `Retry-After: 3`, then serves 4 p
 | `RateLimitBackoffMiddleware`, run 1 | 3.30, 3.59, 3.86, 4.14 | 0 of 4 |
 | `RateLimitBackoffMiddleware`, run 2 | 3.17, 3.43, 3.70, 3.92 | 0 of 4 |
 
+**Incremental crawling needs a parser version.** A rerun skips releases whose site id is already stored, and stops paging at the first listing page with no new ids. Two runs on AMD: the first made 23 requests, the second made 2 (robots.txt and page 1).
+
+It does not stop at the first known item, because a pinned or re-dated release can sit above new ones. And "already stored" means stored by the current `PARSER_VERSION`. Without that, the table fix below would never have reached rows saved before it. Those rows would count as done and never be fetched again.
+
 **A long body can still be the wrong body.** The first parser read only `<p>` tags. On AMD's Q2 2026 earnings release that dropped 17 tables and about 70% of the text, including every net income figure. Title, date and length checks all passed, so nothing failed. The parser now reads every block in order and keeps table rows.
 
 ## Known issues
 
 * Some financial tables split `$` and the number into separate cells, which leaves empty cells in a row.
-* A rerun fetches every detail page again, even ones already stored.
+* If a company edits a release after we store it, an incremental crawl does not see the change. `-a full=1` does.
+* The stop rule assumes the listing is newest first.
 * Backoff state lives in the download slot, so it only covers one crawler process. Several processes hitting the same host would need shared state, such as Redis.
 * The idle-slot case (a slot dropped and rebuilt) is handled by writing to the downloader's per-slot settings, but it has no test yet. A test would need over a minute of idle time.
 

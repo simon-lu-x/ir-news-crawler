@@ -10,3 +10,4 @@ class PressRelease(scrapy.Item):
     body_text = scrapy.Field()
     fetched_at = scrapy.Field()
     content_hash = scrapy.Field()  # set by ContentDedupPipeline
+    parser_version = scrapy.Field()  # bump when parsing changes, so old rows get fetched again
