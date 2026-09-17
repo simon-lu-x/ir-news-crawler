@@ -71,10 +71,10 @@ Tests run the real crawler in a subprocess against a small local site (`tests/fi
 
 ## Components
 
-| Textbook name | Scrapy name | Where |
+| Component | In Scrapy | In this repo |
 |---|---|---|
 | Seeds | `start()` | `SITES` in `spiders/press_detail.py` |
-| Per-template selectors | | `LAYOUTS` in `spiders/press_detail.py` |
+| Per-template selectors | CSS selectors in callbacks | `LAYOUTS` in `spiders/press_detail.py` |
 | URL frontier | Scheduler | built in |
 | Fetcher | Downloader | built in |
 | Politeness | download slots per hostname, AutoThrottle | `settings.py` |
